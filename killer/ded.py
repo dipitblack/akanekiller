@@ -2,13 +2,10 @@ import requests
 import re
 import random
 import time
-import string
-import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Tuple
-from bs4 import BeautifulSoup, SoupStrainer
-from telethon import TelegramClient, events
-from telethon.errors import SessionPasswordNeededError
+import logging
+import string
 
 # Configure logging
 logging.basicConfig(
@@ -65,7 +62,6 @@ def get_fresh_cookies(proxy: dict) -> dict:
             timeout=5
         )
         cookies = response.cookies.get_dict()
-        return cookies
     except Exception as e:
         logger.error(f"Failed to fetch cookies: {str(e)}")
         return {}
