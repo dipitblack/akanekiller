@@ -179,7 +179,7 @@ async def process_order(cc_number, cc_month, cc_year, cc_cvv):
 
         # Step 4: Tokenize credit card with Braintree
         h1 = {
-            'authorization': 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiIsImtpZCI6IjIwMTgwNDI2MTYtcHJvZHVjdGlvbiIsImlzcyI6Imh0dHBzOi8vYXBpLmJyYWludHJlZWdhdGV3YXkuY29tIn0.eyJleHAiOjE3NDYyOTQxNzIsImp0aSI6ImVlNjYyM2I3LWNkMTktNGQ4Yi04NmI1LWNmNjY4Mjg2YTFiMyIsInN1YiI6Ijlwemo0dHcyc2g5anl3cHAiLCJpc3MiOiJodHRwczovL2FwaS5icmFpbnRyZWVnYXRld2F5LmNvbSIsIm1lcmNoYW50Ijp7InB1YmxpY19pZCI6Ijlwemo0dHcyc2g5anl3cHAiLCJ2ZXJpZnlfY2FyZF9ieV9kZWZhdWx0IjpmYWxzZX0sInJpZ2h0cyI6WyJtYW5hZ2VfdmF1bHQiXSwic2NvcGUiOlsiQnJhaW50cmVlOlZhdWx0Il0sIm9wdGlvbnMiOnt9fQ.DEUZtNEfMsmxET6AatMlod78mKCgoP4kb6t_JhoQYhf9pN2xz-m8BweU5fPNrhLsayqbra5v1Kkbk6tU1dxD1w',
+            'authorization': 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiIsImtpZCI6IjIwMTgwNDI2MTYtcHJvZHVjdGlvbiIsImlzcyI6Imh0dHBzOi8vYXBpLmJyYWludHJlZWdhdGV3YXkuY29tIn0.eyJleHAiOjE3NDY0Mjg5ODQsImp0aSI6ImEzYmNjMzU1LTI5YWQtNDE3NC1hODMxLTI0OTI5MmU3MmE2NiIsInN1YiI6Ijlwemo0dHcyc2g5anl3cHAiLCJpc3MiOiJodHRwczovL2FwaS5icmFpbnRyZWVnYXRld2F5LmNvbSIsIm1lcmNoYW50Ijp7InB1YmxpY19pZCI6Ijlwemo0dHcyc2g5anl3cHAiLCJ2ZXJpZnlfY2FyZF9ieV9kZWZhdWx0IjpmYWxzZX0sInJpZ2h0cyI6WyJtYW5hZ2VfdmF1bHQiXSwic2NvcGUiOlsiQnJhaW50cmVlOlZhdWx0Il0sIm9wdGlvbnMiOnt9fQ.Buf8jKvR0Yqvn240fHtnVqOsmrpRonT-jRSvetwFzBQTyuqepsOrY31yJ-aWChKndR4etAs1CT9ETsiqCqbi0g',
             'braintree-version': '2018-05-10',
             'content-type': 'application/json',
         }
@@ -243,7 +243,7 @@ async def process_order(cc_number, cc_month, cc_year, cc_cvv):
                 'issuerDeviceDataCollectionTimeElapsed': random.randint(10000, 12000),
                 'issuerDeviceDataCollectionResult': True,
             },
-            'authorizationFingerprint': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiIsImtpZCI6IjIwMTgwNDI2MTYtcHJvZHVjdGlvbiIsImlzcyI6Imh0dHBzOi8vYXBpLmJyYWludHJlZWdhdGV3YXkuY29tIn0.eyJleHAiOjE3NDYyOTQxNzIsImp0aSI6ImVlNjYyM2I3LWNkMTktNGQ4Yi04NmI1LWNmNjY4Mjg2YTFiMyIsInN1YiI6Ijlwemo0dHcyc2g5anl3cHAiLCJpc3MiOiJodHRwczovL2FwaS5icmFpbnRyZWVnYXRld2F5LmNvbSIsIm1lcmNoYW50Ijp7InB1YmxpY19pZCI6Ijlwemo0dHcyc2g5anl3cHAiLCJ2ZXJpZnlfY2FyZF9ieV9kZWZhdWx0IjpmYWxzZX0sInJpZ2h0cyI6WyJtYW5hZ2VfdmF1bHQiXSwic2NvcGUiOlsiQnJhaW50cmVlOlZhdWx0Il0sIm9wdGlvbnMiOnt9fQ.DEUZtNEfMsmxET6AatMlod78mKCgoP4kb6t_JhoQYhf9pN2xz-m8BweU5fPNrhLsayqbra5v1Kkbk6tU1dxD1w',
+            'authorizationFingerprint': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiIsImtpZCI6IjIwMTgwNDI2MTYtcHJvZHVjdGlvbiIsImlzcyI6Imh0dHBzOi8vYXBpLmJyYWludHJlZWdhdGV3YXkuY29tIn0.eyJleHAiOjE3NDY0Mjg5ODQsImp0aSI6ImEzYmNjMzU1LTI5YWQtNDE3NC1hODMxLTI0OTI5MmU3MmE2NiIsInN1YiI6Ijlwemo0dHcyc2g5anl3cHAiLCJpc3MiOiJodHRwczovL2FwaS5icmFpbnRyZWVnYXRld2F5LmNvbSIsIm1lcmNoYW50Ijp7InB1YmxpY19pZCI6Ijlwemo0dHcyc2g5anl3cHAiLCJ2ZXJpZnlfY2FyZF9ieV9kZWZhdWx0IjpmYWxzZX0sInJpZ2h0cyI6WyJtYW5hZ2VfdmF1bHQiXSwic2NvcGUiOlsiQnJhaW50cmVlOlZhdWx0Il0sIm9wdGlvbnMiOnt9fQ.Buf8jKvR0Yqvn240fHtnVqOsmrpRonT-jRSvetwFzBQTyuqepsOrY31yJ-aWChKndR4etAs1CT9ETsiqCqbi0g',
             'braintreeLibraryVersion': 'braintree/web/3.94.0',
             '_meta': {
                 'merchantAppId': 'bubblegumballoons.com',
