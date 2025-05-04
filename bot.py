@@ -6,10 +6,11 @@ from telethon import TelegramClient, Button
 from telethon.errors import SessionPasswordNeededError
 import random
 from killer.kill import process_card as process_card_kill
-from killer.kd import kum 
 from killer.ded import ded as process_card_ded
-from checkers.au import process_card_au 
+from checkers.au import process_order
 import json
+import time
+import re
 
 # Bot configuration
 API_ID = 19274214
@@ -169,16 +170,6 @@ async def ded(event):
     await process_card_ded(client, event, card_info)
 
 
-@client.on(events.NewMessage(pattern=r'/kd\s+(.+)'))
-async def kd_handler(event):
-    """Handle the /kd command."""
-    if event.sender_id not in AUTHORIZED_USERS:
-        await event.respond("❌ **Error**: Unauthorized user. Access denied.")
-        return
-
-    card_info = event.pattern_match.group(1).strip()
-    await kum(client, event, card_info)
-    
 async def main():
     try:
         await client.start(bot_token=BOT_TOKEN)
@@ -189,15 +180,89 @@ async def main():
     except Exception as e:
         logger.error(f"Error starting bot: {str(e)}")
 
-# Attach event listener
-@client.on(events.NewMessage(pattern=r'/au\s+(.+)'))
-async def au(event):
-    if event.sender_id not in AUTHORIZED_USERS:
-        await event.respond("❌ **Error**: Unauthorized user. Access denied.")
-        return
+def get_bin_info(bin_number):
+    try:
+        url = f"https://bins.antipublic.cc/bins/{bin_number}"
+        response = requests.get(url, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        
+        # Assuming the new API returns fields in a similar structure
+        scheme = data.get('scheme', 'UNKNOWN').upper()
+        card_type = data.get('type', 'UNKNOWN').upper()
+        brand = data.get('brand', 'UNKNOWN').upper()
+        bank = data.get('bank', 'UNKNOWN').upper()
+        country = data.get('country_name', 'UNKNOWN').upper()
+        country_emoji = data.get('country_emoji', '')  # Some APIs might not have emoji
 
-    card_info = event.pattern_match.group(1).strip()
-    await process_card_au(client, event, card_info)
+        bin_info = f"{scheme} - {card_type} - {brand}"
+        return {
+            'bin_info': bin_info,
+            'bank': bank,
+            'country': f"{country} {country_emoji}"
+        }
+    except Exception as e:
+        logger.error(f"BIN lookup failed: {str(e)}")
+        return {
+            'bin_info': 'Unknown',
+            'bank': 'Unknown',
+            'country': 'Unknown'
+        }
+
+# Telegram bot event handler
+@client.on(events.NewMessage(pattern=r'^/chk\s+(.+)'))
+async def check_card(event):
+    logger.debug("Received /chk command")
+    start_time = time.time()
+    
+    # Extract input using regex
+    input_text = event.pattern_match.group(1)
+    pattern = r'^(\d{16})\|(\d{2})\|(\d{2})\|(\d{3})$'
+    match = re.match(pattern, input_text)
+    
+    if not match:
+        logger.warning(f"Invalid input format: {input_text}")
+        await event.reply("Invalid input format. Use: /chk cc|mm|yy|cvv\nExample: /chk 4207670303764172|02|29|082")
+        return
+    
+    cc_number, cc_month, cc_year, cc_cvv = match.groups()
+    logger.debug(f"Parsed input: cc_number={cc_number}, cc_month={cc_month}, cc_year={cc_year}, cc_cvv={cc_cvv}")
+    
+    # Get BIN info
+    bin_info = get_bin_info(cc_number[:6])
+    
+    # Process the order
+    result = await process_order(cc_number, cc_month, cc_year, cc_cvv)
+    processing_time = time.time() - start_time
+    
+    # Format response
+    if result is None or 'error' in result:
+        error_msg = result.get('error', 'Unknown error occurred') if result else 'Process order returned None'
+        logger.error(f"Order processing failed: {error_msg}")
+        await event.reply(f"Order processing failed: {error_msg}")
+        return
+    
+    response_data = result['response']
+    status = response_data.get('status', False)
+    message = response_data.get('message', 'Unknown')
+
+    bold = lambda s: f"**{s}**"
+    arrow = "➟"
+    
+    if status:
+        response_text = f"✅ {bold('Approved')}\n\n"
+    else:
+        response_text = f"❌ {bold('Declined')}\n\n"
+        
+        response_text += f"{bold('Card')} {arrow} {cc_number}|{cc_month}|20{cc_year}|{cc_cvv}\n"
+        response_text += f"{bold('Gateway')} {arrow} Braintree Auth 1\n"
+        response_text += f"{bold('Response')} {arrow} {message}\n\n"
+        response_text += f"{bold('BIN')} {arrow} {bin_info['bin_info']}\n"
+        response_text += f"{bold('Bank')} {arrow} {bin_info['bank']}\n"
+        response_text += f"{bold('Country')} {arrow} {bin_info['country']}\n"
+        response_text += f"{bold('Time')} {arrow} {processing_time:.2f}s"
+
+        await event.reply(response_text)
 
 
 if __name__ == '__main__':
