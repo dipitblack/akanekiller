@@ -5,6 +5,7 @@ from telethon.events import CallbackQuery
 from telethon import TelegramClient, Button
 from telethon.errors import SessionPasswordNeededError
 import random
+from killer.kd import kum
 from killer.kill import process_card as process_card_kill
 from killer.ded import ded as process_card_ded
 from checkers.au import process_order
