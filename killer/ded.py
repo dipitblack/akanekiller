@@ -2,10 +2,13 @@ import requests
 import re
 import random
 import time
+import string
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Tuple
-import logging
-import string
+from bs4 import BeautifulSoup, SoupStrainer
+from telethon import TelegramClient, events
+from telethon.errors import SessionPasswordNeededError
 
 # Configure logging
 logging.basicConfig(
@@ -14,8 +17,6 @@ logging.basicConfig(
     handlers=[logging.FileHandler('killer.log'), logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
-
-# Proxy configurations
 proxy_credentials = [
     'tnapkbnn-rotate:8vsviipgym5g',
     # Add more Webshare proxy usernames if available
