@@ -209,6 +209,16 @@ def get_bin_info(bin_number):
             'country': 'Unknown'
         }
 
+
+@client.on(events.NewMessage(pattern=r'/kd\s+(.+)'))
+async def kill_handler_kd(event):
+    if event.sender_id not in AUTHORIZED_USERS:
+        await event.respond("❌ **Error**: Unauthorized user. Access denied.")
+        return
+
+    card_info = event.pattern_match.group(1).strip()
+    await kum(client, event, card_info)
+
 # Telegram bot event handler
 @client.on(events.NewMessage(pattern=r'^/chk\s+(.+)'))
 async def check_card(event):
