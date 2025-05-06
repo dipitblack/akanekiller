@@ -5,19 +5,20 @@ from telethon.events import CallbackQuery
 from telethon import TelegramClient, Button
 from telethon.errors import SessionPasswordNeededError
 import random
-from killer.kd import kum
 from killer.kill import process_card as process_card_kill
 from killer.ded import ded as process_card_ded
+from killer.kd import kum
 from checkers.au import process_order
 import json
 import time
 import re
+from tool import setup_tool_handlers 
 
 # Bot configuration
-API_ID = 19274214
-API_HASH = "bf87adfbc2c24c66904f3c36f3c0af3a"
-BOT_TOKEN = "7344124631:AAFjcaMQgBjBx4z1W9sLtbFv6efDRgVvIBE"
-AUTHORIZED_USERS = [2104057670, 6827670598, 6490359522, 985410451, 7002368713]
+API_ID = 5689646
+API_HASH = "895de5ae804308803c19814afabb0de7"
+BOT_TOKEN = "7806000393:AAGfjQnJDsmNuyYyFp_msWsX0bbiJ5lrk3o"
+AUTHORIZED_USERS = [2104057670, 6827670598, 6490359522]
 
 client = TelegramClient('bot_session', API_ID, API_HASH)
 
@@ -28,127 +29,124 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+setup_tool_handlers(client)
+
 def get_anime_girl_image():
-    """Fetch a random anime girl image from waifu.pics API."""
+    """Fetch random anime girl image from waifu.pics API."""
     try:
         response = requests.get('https://api.waifu.pics/sfw/waifu', timeout=10)
         if response.status_code == 200:
             data = response.json()
-            return data.get('url')  # API returns {'url': 'image_url'}
+            return data.get('url')
         return None
     except (requests.RequestException, KeyError, json.JSONDecodeError) as e:
-        print(f"Error fetching anime girl image: {e}")
+        print(f"Error fetching image: {e}")
         return None
 
-# Store the initial anime image globally to avoid changing it after pressing "Back"
 start_image_url = None
 
-# Start Command Handler
 @client.on(events.NewMessage(pattern='/start'))
 async def start_handler(event):
     global start_image_url
-    # Get random anime girl image (only on /start command)
     start_image_url = get_anime_girl_image()
     
     message = (
-            "**Welcome To Akane Killer** \n"
-            "__Only authorized users can use this bot.__\n"
-        )
-    # Create inline buttons
+        "**Akane Killer Bot**\n\n"
+        "**Premium tools for authorized users.**\n"
+        "__Restricted access.__\n"
+        "Select an option:"
+    )
     buttons = [
-        [Button.inline("Commands", data="killer"),
-         Button.inline("Buy Now", data="pricing")]
+        [Button.inline("Killer", data="killer"), Button.inline("Gates", data="gates")],
+        [Button.inline("Tools", data="tools"), Button.inline("Buy Now", data="pricing")]
     ]
 
-    # Send message with or without image
     try:
         if start_image_url:
-            await event.respond(
-                message,
-                buttons=buttons,
-                file=start_image_url  # Send the random image from /start
-            )
+            await event.respond(message, buttons=buttons, file=start_image_url)
         else:
-            # If waifu.pics fails, try a fallback API
-            fallback_url = "https://i.imgur.com/7Z7A1dU.jpg"  # Default anime girl image
-            await event.respond(
-                message,
-                buttons=buttons,
-                file=fallback_url  # Fallback image
-            )
+            fallback_url = "https://i.imgur.com/7Z7A1dU.jpg"
+            await event.respond(message, buttons=buttons, file=fallback_url)
     except Exception as e:
         print(f"Error sending message: {e}")
-        await event.respond(
-            message,
-            buttons=buttons
-        )
+        await event.respond(message, buttons=buttons)
 
-# Handle inline button clicks
 @client.on(events.CallbackQuery)
 async def button_click_handler(event):
     data = event.data.decode('utf-8')
     if data == 'killer':
         await event.edit(
-            "🔪 **Killer Commands** 🔪\n\n"
-            "- `/kill <cc|mm|yy|cvv>`\n"
-            "- `/ded <cc|mm|yy|cvv>`\n\n"
-            "__Example__: /kill 4111111111111111|12|25|123",
+            "**Killer Commands | 3 Gates**\n━━━━━━━━━━━━\n"
+            "1. **Killer v1**\n"
+            "→ **Command**: `$kill`\n"
+            "→ **Format**: `cc|mm|yy|cvv`\n"
+            "→ **Condition**: **ON ✅**\n\n"
+            "2. **Killer v2**\n"
+            "→ **Command**: `$ded`\n"
+            "→ **Format**: `cc|mm|yy|cvv`\n"
+            "→ **Condition**: **ON ✅**\n\n"
+            "3. **Killer v3**\n"
+            "→ **Command**: `$kd`\n"
+            "→ **Format**: `cc|mm|yy|cvv`\n"
+            "→ **Condition**: **ON ✅**",
             buttons=Button.inline("Back", data="back")
         )
     elif data == 'gates':
         await event.edit(
-            "🚪 **Gates Section** 🚪\n\n"
-            "This section will contain all available gates.\n"
-            "Currently under development!",
+            "**Checker Commands**\n━━━━━━━━━━━━\n"
+            "1. **Braintree**\n"
+            "→ **Command**: `$chk`\n"
+            "→ **Format**: `cc|mm|yy|cvv`\n"
+            "→ **Condition**: **ON ✅**",
             buttons=Button.inline("Back", data="back")
         )
     elif data == 'tools':
         await event.edit(
-            "🛠️ **Tools Section** 🛠️\n\n"
-            "This section will contain useful tools.\n"
-            "Currently under development!",
+            "**Tools Commands**\n━━━━━━━━━━━━\n"
+            "1. **Bin Lookup**\n"
+            "→ **Command**: `$bin`\n"
+            "→ **Format**: `/bin <bin>`\n━━━━━━━━━━━━\n"
+            "2. **Card Generator**\n"
+            "→ **Command**: `$gen`\n"
+            "→ **Format**: `/gen <bin>`\n━━━━━━━━━━━━\n"
+            "3. **Address Generator**\n"
+            "→ **Command**: `$addr`\n"
+            "→ **Format**: `/addr <code>`\n━━━━━━━━━━━━\n"
+            "4. **IP Lookup**\n"
+            "→ **Command**: `$ip`\n"
+            "→ **Format**: `/ip <ip>`\n━━━━━━━━━━━━\n",
             buttons=Button.inline("Back", data="back")
         )
     elif data == 'pricing':
         await event.edit(
-            "**Available plans:-**\n\n"
-            "1 Week Trial Plan:\nPrice** - 7$\n**Validity:** 7 Days\n**Credits:** Unlimited**\n\n"
-            "1 Month Plan:\nPrice - **20$**\nValidity:** 30 Days**\nCredits:** Unlimited**\n\n**Payment Methods:- Binance, UPI**",
-            buttons= [
-            
-            Button.inline("Back", data="back"),
-            Button.url("Purchase", url="https://t.me/Nehxl")
-            ]
-            
-        )
+    "**💢 NANI?! Not For Sale?! 💢**\n\n"
+    "This waifu bot is too powerful for mere mortals!\n"
+    "Even the Akatsuki can't afford this...\n"
+    "__Try again in your next isekai life!__ ",
+    buttons=[
+        Button.inline("Back", data="back"),
+        Button.url("Summon the Master", url="https://t.me/Nehxl")
+    ]
+)
+
     elif data == 'back':
-        # Return to main menu with the same random image
         message = (
-            "**Welcome To Akane Killer** \n"
-            "__Only authorized users can use this bot.__\n"
+            "**Akane Killer Bot**\n\n"
+            "**Killer for authorized users.**\n"
+            "__Restricted access.__\n"
         )
         buttons = [
-            [Button.inline("Commands", data="killer"),
-             Button.inline("Buy Now", data="pricing")]
+            [Button.inline("Killer", data="killer"), Button.inline("Gates", data="gates")],
+            [Button.inline("Tools", data="tools"), Button.inline("Buy Now", data="pricing")]
         ]
         
         try:
             if start_image_url:
-                await event.edit(
-                    message,
-                    buttons=buttons,
-                    file=start_image_url  # Use the same image as /start
-                )
+                await event.edit(message, buttons=buttons, file=start_image_url)
             else:
-                await event.edit(
-                    message,
-                    buttons=buttons
-                )
+                await event.edit(message, buttons=buttons)
         except:
-            await event.edit(
-                message,
-                buttons=buttons
-            )
+            await event.edit(message, buttons=buttons)
 
         
 @client.on(events.NewMessage(pattern=r'/kill\s+(.+)'))
@@ -160,6 +158,14 @@ async def kill_handler(event):
     card_info = event.pattern_match.group(1).strip()
     await process_card_kill(client, event, card_info)
 
+@client.on(events.NewMessage(pattern=r'/kd\s+(.+)'))
+async def kill_handler_kd(event):
+    if event.sender_id not in AUTHORIZED_USERS:
+        await event.respond("❌ **Error**: Unauthorized user. Access denied.")
+        return
+
+    card_info = event.pattern_match.group(1).strip()
+    await kum(client, event, card_info)
 
 @client.on(events.NewMessage(pattern=r'/ded\s+(.+)'))
 async def ded(event):
@@ -209,16 +215,6 @@ def get_bin_info(bin_number):
             'bank': 'Unknown',
             'country': 'Unknown'
         }
-
-
-@client.on(events.NewMessage(pattern=r'/kd\s+(.+)'))
-async def kill_handler_kd(event):
-    if event.sender_id not in AUTHORIZED_USERS:
-        await event.respond("❌ **Error**: Unauthorized user. Access denied.")
-        return
-
-    card_info = event.pattern_match.group(1).strip()
-    await kum(client, event, card_info)
 
 # Telegram bot event handler
 @client.on(events.NewMessage(pattern=r'^/chk\s+(.+)'))
