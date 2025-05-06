@@ -219,6 +219,9 @@ def get_bin_info(bin_number):
 # Telegram bot event handler
 @client.on(events.NewMessage(pattern=r'^/chk\s+(.+)'))
 async def check_card(event):
+    if event.sender_id not in AUTHORIZED_USERS:
+        await event.respond("❌ **Error**: Unauthorized user. Access denied.")
+        return
     logger.debug("Received /chk command")
     start_time = time.time()
     
@@ -270,6 +273,7 @@ async def check_card(event):
         response_text += f"{bold('Time')} {arrow} {processing_time:.2f}s"
 
         await event.reply(response_text)
+
 
 
 if __name__ == '__main__':
