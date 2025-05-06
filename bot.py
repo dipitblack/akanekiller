@@ -97,6 +97,10 @@ async def button_click_handler(event):
             "1. **Braintree**\n"
             "→ **Command**: `$chk`\n"
             "→ **Format**: `cc|mm|yy|cvv`\n"
+            "→ **Condition**: **ON ✅**\n\n"
+            "2. **Zuora + Stripe 1$**\n"
+            "→ **Command**: `$ab`\n"
+            "→ **Format**: `cc|mm|yy|cvv`\n"
             "→ **Condition**: **ON ✅**",
             buttons=Button.inline("Back", data="back")
         )
@@ -274,8 +278,13 @@ async def check_card(event):
 
         await event.reply(response_text)
 
-
-
+@client.on(events.NewMessage(pattern=r'^/ab\s+(.+)'))
+async def check_card(event):
+    if event.sender_id not in AUTHORIZED_USERS:
+        await event.respond("❌ **Error**: Unauthorized user. Access denied.")
+        return
+    await ab.check_card_handler(event)
+    
 if __name__ == '__main__':
     import asyncio
     asyncio.run(main())
