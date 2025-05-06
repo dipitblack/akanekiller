@@ -9,9 +9,9 @@ from killer.kill import process_card as process_card_kill
 from killer.ded import ded as process_card_ded
 from killer.kd import kum
 from checkers.au import process_order
+from checkers import ab
 import json
 import time
-from checkers import ab
 import re
 from tool import setup_tool_handlers 
 
@@ -19,7 +19,7 @@ from tool import setup_tool_handlers
 API_ID = 5689646
 API_HASH = "895de5ae804308803c19814afabb0de7"
 BOT_TOKEN = "7344124631:AAFjcaMQgBjBx4z1W9sLtbFv6efDRgVvIBE"
-AUTHORIZED_USERS = [2104057670, 6827670598, 6490359522, 985410451, 7002368713, 1650751589, 1393039116, 1203900183]
+AUTHORIZED_USERS = [2104057670, 6827670598, 6490359522, 985410451, 7002368713, 1650751589]
 
 client = TelegramClient('bot_session', API_ID, API_HASH)
 
@@ -97,10 +97,6 @@ async def button_click_handler(event):
             "**Checker Commands**\n━━━━━━━━━━━━\n"
             "1. **Braintree**\n"
             "→ **Command**: `$chk`\n"
-            "→ **Format**: `cc|mm|yy|cvv`\n"
-            "→ **Condition**: **ON ✅**\n\n"
-            "2. **Zuora + Stripe 1$**\n"
-            "→ **Command**: `$ab`\n"
             "→ **Format**: `cc|mm|yy|cvv`\n"
             "→ **Condition**: **ON ✅**",
             buttons=Button.inline("Back", data="back")
@@ -232,7 +228,7 @@ async def check_card(event):
     
     # Extract input using regex
     input_text = event.pattern_match.group(1)
-    pattern = r'^(\d{16})\|(\d{2})\|(\d{2})\|(\d{3})$'
+    pattern = r'^(\d{16})\|(\d{1,2})\|(\d{2,4})\|(\d{3})$'
     match = re.match(pattern, input_text)
     
     if not match:
@@ -241,6 +237,15 @@ async def check_card(event):
         return
     
     cc_number, cc_month, cc_year, cc_cvv = match.groups()
+    
+    # Normalize month to 2-digit
+    cc_month = cc_month.zfill(2)
+    
+    # Normalize year to 2-digit
+    if len(cc_year) == 4:
+        cc_year = cc_year[-2:]
+
+    logger.debug(f"Normalized input: {cc_number}|{cc_month}|{cc_year}|{cc_cvv}")
     logger.debug(f"Parsed input: cc_number={cc_number}, cc_month={cc_month}, cc_year={cc_year}, cc_cvv={cc_cvv}")
     
     # Get BIN info
@@ -281,11 +286,12 @@ async def check_card(event):
 
 @client.on(events.NewMessage(pattern=r'^/ab\s+(.+)'))
 async def check_card(event):
+    """Handle the /chk command"""
     if event.sender_id not in AUTHORIZED_USERS:
         await event.respond("❌ **Error**: Unauthorized user. Access denied.")
         return
     await ab.check_card_handler(event)
-    
+
 if __name__ == '__main__':
     import asyncio
     asyncio.run(main())
