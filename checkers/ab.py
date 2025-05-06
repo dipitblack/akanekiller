@@ -11,7 +11,7 @@ from datetime import datetime
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-AUTHORIZED_USERS = [2104057670, 6827670598, 6490359522, 985410451, 7002368713, 1650751589]
+AUTHORIZED_USERS = [2104057670, 6827670598, 6490359522, 985410451, 7002368713, 1650751589, 1393039116, 1203900183]
 
 # Proxy configuration
 proxy_credentials = [
@@ -304,7 +304,7 @@ async def check_card_handler(event):
     
     # Extract input using regex
     input_text = event.pattern_match.group(1)
-    pattern = r'^(\d{16})\|(\d{2})\|(\d{2})\|(\d{3})$'
+    pattern = r'^(\d{16})\|(\d{1,2})\|(\d{2,4})\|(\d{3})$'
     match = re.match(pattern, input_text)
     
     if not match:
@@ -313,7 +313,16 @@ async def check_card_handler(event):
         return
     
     cc_number, cc_month, cc_year, cc_cvv = match.groups()
-    logger.debug(f"Parsed input: cc_number=****{cc_number[-4:]}, cc_month={cc_month}, cc_year={cc_year}, cc_cvv=***")
+    
+    # Normalize month to 2-digit
+    cc_month = cc_month.zfill(2)
+    
+    # Normalize year to 2-digit
+    if len(cc_year) == 4:
+        cc_year = cc_year[-2:]
+
+    logger.debug(f"Normalized input: {cc_number}|{cc_month}|{cc_year}|{cc_cvv}")
+
     
     # Get BIN info using Braintree API
     bin_info = get_bin_info(cc_number, cc_month, cc_year, cc_cvv)
