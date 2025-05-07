@@ -98,7 +98,15 @@ async def button_click_handler(event):
             "1. **Braintree**\n"
             "→ **Command**: `$chk`\n"
             "→ **Format**: `cc|mm|yy|cvv`\n"
-            "→ **Condition**: **ON ✅**",
+            "→ **Condition**: **ON ✅**\n\n",
+            "2. **Zuora & Stripe 1$**\n"
+            "→ **Command**: `$ab`\n"
+            "→ **Format**: `cc|mm|yy|cvv`\n"
+            "→ **Condition**: **ON ✅**\n\n",
+            "3. **Unknown Auth**\n"
+            "→ **Command**: `$au`\n"
+            "→ **Format**: `cc|mm|yy|cvv`\n"
+            "→ **Condition**: **OFF ❌**",
             buttons=Button.inline("Back", data="back")
         )
     elif data == 'tools':
