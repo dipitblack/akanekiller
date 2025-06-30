@@ -10,16 +10,17 @@ from killer.ded import ded as process_card_ded
 from killer.kd import kum
 from checkers.au import process_order
 from checkers import ab
+from checkers import uk
 import json
 import time
 import re
 from tool import setup_tool_handlers 
 
 # Bot configuration
-API_ID = 5689646
-API_HASH = "895de5ae804308803c19814afabb0de7"
-BOT_TOKEN = "7344124631:AAFjcaMQgBjBx4z1W9sLtbFv6efDRgVvIBE"
-AUTHORIZED_USERS = [2104057670, 6827670598, 6490359522, 985410451, 7002368713, 1650751589, 1203900183, 1393039116]
+API_ID = 19274214
+API_HASH = "bf87adfbc2c24c66904f3c36f3c0af3a"
+BOT_TOKEN = "7344124631:AAG1EBpN643SlpXwGepQkUBuTmJQMOM-cgk"
+AUTHORIZED_USERS = [2104057670, 6827670598, 6490359522, 985410451, 7002368713, 1650751589]
 
 client = TelegramClient('bot_session', API_ID, API_HASH)
 
@@ -98,15 +99,7 @@ async def button_click_handler(event):
             "1. **Braintree**\n"
             "→ **Command**: `$chk`\n"
             "→ **Format**: `cc|mm|yy|cvv`\n"
-            "→ **Condition**: **ON ✅**\n\n"
-            "2. **Zuora & Stripe 1$**\n"
-            "→ **Command**: `$ab`\n"
-            "→ **Format**: `cc|mm|yy|cvv`\n"
-            "→ **Condition**: **ON ✅**\n\n"
-            "3. **Unknown Auth**\n"
-            "→ **Command**: `$au`\n"
-            "→ **Format**: `cc|mm|yy|cvv`\n"
-            "→ **Condition**: **OFF ❌**",
+            "→ **Condition**: **ON ✅**",
             buttons=Button.inline("Back", data="back")
         )
     elif data == 'tools':
@@ -299,6 +292,14 @@ async def check_card(event):
         await event.respond("❌ **Error**: Unauthorized user. Access denied.")
         return
     await ab.check_card_handler(event)
+
+@client.on(events.NewMessage(pattern=r'^/au\s+(.+)'))
+async def check_card(event):
+    if event.sender_id not in AUTHORIZED_USERS:
+        await event.respond("❌ **Error**: Unauthorized user. Access denied.")
+        return
+    await uk.check_card_handler(event)
+
 
 if __name__ == '__main__':
     import asyncio
