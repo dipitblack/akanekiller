@@ -3,7 +3,7 @@ import random
 from telethon import events
 import uuid
 
-AUTHORIZED_USERS = [6361314811, 2104057670, 6827670598, 6490359522]
+AUTHORIZED_USERS = [5617359715, 6361314811, 2104057670, 6827670598, 6490359522]
 
 def luhn_checksum(card_number):
     def digits_of(n):
