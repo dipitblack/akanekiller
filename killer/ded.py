@@ -11,8 +11,6 @@ from bs4 import BeautifulSoup, SoupStrainer
 from telethon import TelegramClient, events
 from telethon.errors import SessionPasswordNeededError
 
-# --- existing logging / proxies / user-agents (unchanged) ---
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -273,3 +271,4 @@ async def ded(client: TelegramClient, event: events.NewMessage.Event, card_info:
     result_message += f"\n⏱ 𝐓𝐢𝐦𝐞 𝐓𝐚𝐤𝐞𝐧: {total_time:.2f} 𝘴𝘦𝘤𝘰𝘯𝘥𝘴\n"
 
     await processing_msg.edit(result_message)
+
