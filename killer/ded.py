@@ -52,59 +52,90 @@ def generate_random_email() -> str:
 def extract_card_data(raw: str):
     import re, unicodedata
 
-    # 1. Normalize (important for Telegram)
-    text = unicodedata.normalize("NFKC", raw)
+    # 1. Normalize (important for Telegram and weird unicode)
+    text = unicodedata.normalize("NFKC", raw or "")
 
     # 2. Remove ALL zero-width and invisible chars Telegram injects
     text = re.sub(r'[\u200B\u200C\u200D\u2060\uFEFF\u180E]', '', text)
 
-    # 3. Flatten newlines
+    # 3. Flatten newlines and normalize spaces
     text = text.replace("\n", " ").replace("\r", " ")
+    text = re.sub(r'\s+', ' ', text).strip()
 
-    # 4. Remove double spaces
-    text = re.sub(r'\s+', ' ', text).strip().lower()
-
-    print("DEBUG CLEAN TEXT:", repr(text))
+    lowered = text.lower()
 
     # -------------------------
-    # CARD NUMBER 16–19 digits
+    # CARD NUMBER: detect groups with spaces/dashes
+    # Find candidate chunks containing digits, spaces, or dashes then strip non-digits
+    # and accept the first candidate with 13-19 digits (prefer 16-19 if available)
     # -------------------------
-    card = re.search(r'\b\d{16,19}\b', text)
-    if not card:
-        raise ValueError("Card not found")
-    cc = card.group(0)
+    candidates = re.findall(r'[\d\s\-]{13,40}', text)
+    card_number = None
+    best_len = 0
+    for cand in candidates:
+        digits = re.sub(r'\D', '', cand)
+        if 13 <= len(digits) <= 19:
+            # prefer longer (more likely actual card)
+            if len(digits) > best_len:
+                card_number = digits
+                best_len = len(digits)
+
+    if not card_number:
+        # final fallback: any contiguous 13-19 digit sequence
+        m = re.search(r'\b\d{13,19}\b', text)
+        if m:
+            card_number = m.group(0)
+
+    if not card_number:
+        raise ValueError('Card not found')
+
+    cc = card_number
 
     # -------------------------
-    # EXPIRY MM/YY
-    # Accept:
-    #    06/29
-    #    6/29
-    #    06 / 29
-    #    06 /29   (with hidden unicode)
+    # EXPIRY: look for MM/YY, MM/YYYY, M/YYYY, separators may be / - . or unicode fraction
+    # Accept patterns like 'exp: 06/29' or '06-2029' or '06 29'
     # -------------------------
-    expiry = re.search(
-        r'(0?[1-9]|1[0-2])\s*[/]\s*(\d{2})',
-        text
-    )
-
-    if not expiry:
-        raise ValueError("Expiry not found")
-
-    mm = expiry.group(1).zfill(2)
-    yy = expiry.group(2)
+    expiry = None
+    # try explicit forms with separator
+    expiry_match = re.search(r'(?:exp(?:iry|iration)?[:\s]*)?(0?[1-9]|1[0-2])\s*(?:/|-|\.|\u2044|\s)\s*(\d{2,4})', lowered)
+    if expiry_match:
+        mm = expiry_match.group(1).zfill(2)
+        yy = expiry_match.group(2)
+        # normalize 4-digit year to 2-digit
+        if len(yy) == 4:
+            yy = yy[-2:]
+    else:
+        # try compact MMYY like 0629 or MYY
+        m2 = re.search(r'\b(0[1-9]|1[0-2])([0-9]{2})\b', lowered)
+        if m2:
+            mm = m2.group(1).zfill(2)
+            yy = m2.group(2)
+        else:
+            raise ValueError('Expiry not found')
 
     # -------------------------
-    # CVV (3 digits)
-    # First 3-digit NOT inside card number
+    # CVV: prefer labeled forms (cvv/cvc/security code). If not found, pick a 3-4 digit
+    # group that is not the year and not part of the card number.
     # -------------------------
     cvv = None
-    for m in re.findall(r'\b\d{3}\b', text):
-        if m not in cc:
+    labeled = re.search(r'(?:cvv|cvc|security code|sec code|scode)[:\s\-]*?(\d{3,4})', lowered)
+    if labeled:
+        cvv = labeled.group(1)
+    else:
+        # find standalone 3-4 digit numbers
+        for m in re.findall(r'\b\d{3,4}\b', text):
+            if m in cc:
+                continue
+            if m == yy or m == mm:
+                continue
+            # skip common short years like 2023 (4 digits) if they look like full year and match yyyy
+            if len(m) == 4 and m.startswith('20'):
+                continue
             cvv = m
             break
 
     if not cvv:
-        raise ValueError("CVV not found")
+        raise ValueError('CVV not found')
 
     return cc, mm, yy, cvv
 
@@ -224,6 +255,50 @@ async def ded(client: TelegramClient, event: events.NewMessage.Event, card_info:
 
     await processing_msg.edit(msg)
 
+
+def parse_card_input(raw: str) -> str:
+    """
+    Normalize a card input into the form: cc|mm|yy|cvv
+
+    Accepts either:
+      - an already-piped string like '4111111111111111|06|29|123'
+      - a raw block of text containing number, expiry and cvv in any order
+
+    Raises ValueError if any component is missing or invalid.
+    """
+    raw = (raw or "").strip()
+
+    # If user already sent the normalized pipe format, validate quickly
+    if '|' in raw:
+        parts = [p.strip() for p in raw.split('|')]
+        if len(parts) == 4 and all(parts):
+            cc, mm, yy, cvv = parts
+            # basic validations
+            if not re.match(r'^\d{16,19}$', cc):
+                raise ValueError('Invalid card number')
+            if not re.match(r'^\d{2}$', mm):
+                # allow single-digit month
+                if re.match(r'^\d{1}$', mm):
+                    mm = mm.zfill(2)
+                else:
+                    raise ValueError('Invalid expiry month')
+            if not re.match(r'^\d{2}$', yy):
+                raise ValueError('Invalid expiry year')
+            if not re.match(r'^\d{3,4}$', cvv):
+                raise ValueError('Invalid CVV')
+            return f"{cc}|{mm}|{yy}|{cvv}"
+
+    # Otherwise try to extract from free text
+    try:
+        cc, mm, yy, cvv = extract_card_data(raw)
+    except Exception as e:
+        raise ValueError(str(e))
+
+    # Normalize month/year to two-digit year
+    mm = mm.zfill(2)
+    yy = yy.zfill(2)
+
+    return f"{cc}|{mm}|{yy}|{cvv}"
 
 
 
