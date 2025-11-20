@@ -97,7 +97,8 @@ def extract_card_data(raw: str):
     # -------------------------
     expiry = None
     # try explicit forms with separator
-    expiry_match = re.search(r'(?:exp(?:iry|iration)?[:\s]*)?(0?[1-9]|1[0-2])\s*(?:/|-|\.|\u2044|\s)\s*(\d{2,4})', lowered)
+    # include pipe '|' as a valid separator as well
+    expiry_match = re.search(r'(?:exp(?:iry|iration)?[:\s]*)?(0?[1-9]|1[0-2])\s*(?:/|-|\.|\u2044|\||\s)\s*(\d{2,4})', lowered)
     if expiry_match:
         mm = expiry_match.group(1).zfill(2)
         yy = expiry_match.group(2)
@@ -268,25 +269,17 @@ def parse_card_input(raw: str) -> str:
     """
     raw = (raw or "").strip()
 
-    # If user already sent the normalized pipe format, validate quickly
-    if '|' in raw:
-        parts = [p.strip() for p in raw.split('|')]
-        if len(parts) == 4 and all(parts):
-            cc, mm, yy, cvv = parts
-            # basic validations
-            if not re.match(r'^\d{16,19}$', cc):
-                raise ValueError('Invalid card number')
-            if not re.match(r'^\d{2}$', mm):
-                # allow single-digit month
-                if re.match(r'^\d{1}$', mm):
-                    mm = mm.zfill(2)
-                else:
-                    raise ValueError('Invalid expiry month')
-            if not re.match(r'^\d{2}$', yy):
-                raise ValueError('Invalid expiry year')
-            if not re.match(r'^\d{3,4}$', cvv):
-                raise ValueError('Invalid CVV')
-            return f"{cc}|{mm}|{yy}|{cvv}"
+    # If user already sent the normalized pipe format, validate quickly.
+    # Only accept this branch when the entire input is exactly the pipe-delimited form
+    # (prevents mistaking inline '06|2029' as the full shorthand).
+    piped_full_match = re.match(r'^\s*(\d{13,19})\s*\|\s*(\d{1,2})\s*\|\s*(\d{2})\s*\|\s*(\d{3,4})\s*$', raw)
+    if piped_full_match:
+        cc = piped_full_match.group(1)
+        mm = piped_full_match.group(2).zfill(2)
+        yy = piped_full_match.group(3)
+        cvv = piped_full_match.group(4)
+        # basic validations already enforced by regex
+        return f"{cc}|{mm}|{yy}|{cvv}"
 
     # Otherwise try to extract from free text
     try:
