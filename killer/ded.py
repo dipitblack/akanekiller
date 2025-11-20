@@ -66,7 +66,7 @@ def parse_card_input(raw: str) -> str:
     cc = card.group(0)
 
     # 2) Expiry
-    expiry = re.search(r'\b(0[1-9]|1[0-2])\s*[/\-]\s*(\d{2}|\d{4})\b', text)
+    expiry = re.search(r'(?:expired?|exp|expiry)?[:\s]*\b(0[1-9]|1[0-2])\s*[/\-]\s*(\d{2}|\d{4})\b', text)
     if not expiry:
         raise ValueError("Expiry month/year not parsed")
 
@@ -203,3 +203,4 @@ async def ded(client: TelegramClient, event: events.NewMessage.Event, card_info:
     msg += f"\n⏱ Time Taken: {total_time:.2f}s"
 
     await processing_msg.edit(msg)
+
