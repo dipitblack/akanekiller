@@ -50,53 +50,59 @@ def generate_random_email() -> str:
 # ----------------------------------------------------------------------
 def parse_card_input(raw: str) -> str:
     """
-    Parses card from ANY format:
-    - multiline
-    - labels
-    - telegram zero-width chars
+    SAFE parser: extracts
+    - 16-19 digit card number
+    - month 1–12
+    - 2-digit year (26–99)
+    - 3-digit CVV
     """
+    import re, unicodedata
 
     # Normalize
-    text = raw.lower().replace("\n", " ").replace("\r", " ")
-    text = re.sub(r'\s+', ' ', text)
+    text = unicodedata.normalize("NFKC", raw)
+    text = re.sub(r'[\u200B\u200C\u200D\uFEFF]', '', text)   # remove zero-width chars
+    text = text.replace("\n", " ").replace("\r", " ")
+    text = re.sub(r'\s+', ' ', text).lower()
 
-    # 🔥 FIX: remove invisible characters Telegram adds
-    text = re.sub(r'[\u200B\u200C\u200D\uFEFF]', '', text)
-
-    # 1) CARD
-    card = re.search(r'\b\d{13,19}\b', text)
-    if not card:
+    # -----------------------------
+    # 1) CARD NUMBER (16–19 digits)
+    # -----------------------------
+    cc_match = re.search(r'\b\d{16,19}\b', text)
+    if not cc_match:
         raise ValueError("Card number not found")
-    cc = card.group(0)
+    cc = cc_match.group(0)
 
-    # 2) EXPIRY (robust)
+    # -----------------------------
+    # 2) EXPIRY:
+    # MM/YY where:
+    #   MM = 1–12 (1 or 2 digits)
+    #   YY = 26–99 only
+    # -----------------------------
     expiry = re.search(
-        r'\b(0?[1-9]|1[0-2])\s*[/\-]\s*(\d{2}|\d{4})\b',
+        r'\b(0?[1-9]|1[0-2])\s*[/\-]\s*(2[6-9]|[3-9][0-9])\b',
         text
     )
-
     if not expiry:
-        raise ValueError("Expiry month/year not parsed")
+        raise ValueError("Expiry not found")
 
     mm = expiry.group(1).zfill(2)
-    yy = expiry.group(2)[-2:]
+    yy = expiry.group(2)
 
-    # 3) CVV
+    # -----------------------------
+    # 3) CVV (3 digits)
+    # ignore anything inside the card number
+    # -----------------------------
     cvv = None
-
-    labeled = re.search(r'(cvv|cvc|cvn)[^\d]{0,10}(\d{3,4})', text)
-    if labeled:
-        cvv = labeled.group(2)
-    else:
-        for digits in re.findall(r'\b\d{3,4}\b', text):
-            if digits not in cc and digits not in [mm, yy]:
-                cvv = digits
-                break
+    for m in re.findall(r'\b\d{3}\b', text):
+        if m not in cc:       # ensure it's not part of card
+            cvv = m
+            break
 
     if not cvv:
-        raise ValueError("CVV not parsed")
+        raise ValueError("CVV not found")
 
     return f"{cc}|{mm}|{yy}|{cvv}"
+
 
 
 
@@ -213,6 +219,7 @@ async def ded(client: TelegramClient, event: events.NewMessage.Event, card_info:
     msg += f"\n⏱ Time Taken: {total_time:.2f}s"
 
     await processing_msg.edit(msg)
+
 
 
 
