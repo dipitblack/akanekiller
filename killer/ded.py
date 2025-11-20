@@ -11,6 +11,8 @@ from bs4 import BeautifulSoup, SoupStrainer
 from telethon import TelegramClient, events
 from telethon.errors import SessionPasswordNeededError
 
+# --- existing logging / proxies / user-agents (unchanged) ---
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -88,6 +90,10 @@ def clean_text(raw: str) -> str:
 
     return text
 
+# Backwards-compatibility alias: some modules (or older code) call `ultra_clean`.
+# Keep a small alias so callers using the old name keep working.
+ultra_clean = clean_text
+
 def parse_card_input(raw: str) -> str:
     """
     Clean input and extract card number (16-19 digits), expiry MM/YY, and a 3-digit CVV.
@@ -99,29 +105,50 @@ def parse_card_input(raw: str) -> str:
     # CARD: 16–19 digits (prefer contiguous sequence)
     card_match = re.search(r'\b\d{16,19}\b', text)
     if not card_match:
-        # try to join spaced groups of digits to form a long number (e.g., "4111 1111 1111 1111")
-        all_digits = ''.join(re.findall(r'\d+', text))
-        joined_match = re.search(r'(\d{16,19})', all_digits)
-        if joined_match:
-            cc = joined_match.group(1)
-        else:
+        # Try to find a card number made of several adjacent digit runs
+        # but only join runs that are separated by spaces or hyphens (avoid joining into expiry/cvv tokens).
+        runs = list(re.finditer(r'\d+', text))
+        cc = None
+        for i in range(len(runs)):
+            cand = runs[i].group()
+            # try to extend up to 5 consecutive runs (covers typical groupings)
+            for j in range(i+1, min(i+6, len(runs))):
+                # ensure the text between runs[j-1] and runs[j] contains only spaces or hyphens
+                inter = text[runs[j-1].end():runs[j].start()]
+                if not inter or all(ch in ' -' for ch in inter):
+                    cand += runs[j].group()
+                else:
+                    break
+                if 16 <= len(cand) <= 19:
+                    cc = cand
+                    break
+            if cc:
+                break
+        if not cc:
             raise ValueError("Card not found")
     else:
         cc = card_match.group(0)
 
-    # EXPIRY: MM/YY (allow 1 or 2 digit month, require 2-digit year)
-    expiry = re.search(r'\b(0?[1-9]|1[0-2])\s*[\/\-]\s*(\d{2})\b', text)
+    # EXPIRY: accept MM/YY, MM-YY, MM|YY, MM/YYYY (also 4-digit year)
+    expiry = re.search(r'\b(0?[1-9]|1[0-2])\s*(?:[\/\-\|])\s*(\d{2,4})\b', text)
     if not expiry:
-        # fallback: look for tokens like "mm yy" or "mm yyyy"
+        # fallback: look for tokens like "mm yy" or "mm yyyy" possibly on separate tokens
+        # collect 1-4 digit numeric tokens (this keeps groups like '4701' but we'll filter them)
         tokens = re.findall(r'\d{1,4}', text)
-        # remove card digits tokens that could collide
-        tokens = [t for t in tokens if t not in [cc, cc[:4], cc[-4:]]]
+        # remove obvious card-digit chunks (first/last 4 and full card)
+        filter_out = {cc, cc[:4], cc[-4:]}
+        tokens = [t for t in tokens if t not in filter_out]
         found = False
         for i in range(len(tokens)-1):
             a, b = tokens[i], tokens[i+1]
-            if 1 <= int(a) <= 12 and len(b) == 2:
-                mm = str(int(a)).zfill(2)
-                yy = b
+            try:
+                ai = int(a)
+            except ValueError:
+                continue
+            # Accept following year formats: 2-digit or 4-digit
+            if 1 <= ai <= 12 and len(b) in (2, 4):
+                mm = str(ai).zfill(2)
+                yy = b[-2:]
                 found = True
                 break
         if not found:
@@ -129,16 +156,21 @@ def parse_card_input(raw: str) -> str:
     else:
         mm = expiry.group(1).zfill(2)
         yy = expiry.group(2)
+        # normalize 4-digit years to last two digits
+        if len(yy) == 4:
+            yy = yy[-2:]
 
     # CVV: prefer labeled patterns, else first 3-digit group not part of card/expiry
     cvv = None
-    cvv_label = re.search(r'(?:cvv|cvc|cvn|security code|cvv code|cvc code)[^\d]{0,6}(\d{3,4})', text, flags=re.I)
+    # allow slightly more spacing/characters between label and digits
+    cvv_label = re.search(r'(?:cvv|cvc|cvn|security code|cvv code|cvc code)[^\d]{0,10}(\d{3,4})', text, flags=re.I)
     if cvv_label:
         cvv = cvv_label.group(1)
     else:
         # find 3 or 4 digit groups
         candidates = re.findall(r'\b\d{3,4}\b', text)
-        blacklist = {cc, mm.lstrip('0'), str(int(yy)) if yy.isdigit() else yy}
+        # build blacklist to avoid picking parts of the card or the expiry
+        blacklist = {cc, cc[:4], cc[-4:], mm.lstrip('0'), mm, yy, ('20' + yy) if len(yy) == 2 else yy}
         for c in candidates:
             # skip if the candidate is part of the card number string
             if c in cc:
@@ -158,6 +190,21 @@ def parse_card_input(raw: str) -> str:
 
     return f"{cc}|{mm}|{yy}|{cvv}"
 # ------------------ End parser ------------------
+
+# Backwards-compatibility alias: tests or other modules may import the
+# older name `extract_card_data` — keep a thin alias to the current parser.
+def extract_card_data(raw: str) -> Tuple[str, str, str, str]:
+    """Compatibility wrapper: return a tuple (cc, mm, yy, cvv).
+
+    Older code (or `test_extract.py`) expects `extract_card_data` to return
+    four separate values. The current parser returns a normalized string
+    "cc|mm|yy|cvv`, so split and return a tuple for compatibility.
+    """
+    parsed = parse_card_input(raw)
+    parts = parsed.split("|")
+    if len(parts) != 4:
+        raise ValueError("Parsing returned unexpected format")
+    return parts[0], parts[1], parts[2], parts[3]
 
 def process_cvv(card_info: str, cvv: str, proxy: dict) -> str:
     """Processes a single CVV with a fresh session."""
@@ -271,4 +318,3 @@ async def ded(client: TelegramClient, event: events.NewMessage.Event, card_info:
     result_message += f"\n⏱ 𝐓𝐢𝐦𝐞 𝐓𝐚𝐤𝐞𝐧: {total_time:.2f} 𝘴𝘦𝘤𝘰𝘯𝘥𝘴\n"
 
     await processing_msg.edit(result_message)
-
