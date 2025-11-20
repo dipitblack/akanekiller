@@ -50,43 +50,63 @@ def generate_random_email() -> str:
 # ★ FIXED: UNIVERSAL CARD PARSER
 # ----------------------------------------------------------------------
 def extract_card_data(raw: str):
-    # 1. Normalize everything
+    import re, unicodedata
+
+    # 1. Normalize (important for Telegram)
     text = unicodedata.normalize("NFKC", raw)
-    
-    # 2. Remove zero-width characters from Telegram
-    text = re.sub(r'[\u200B-\u200F\uFEFF\u2060\u180E]', '', text)
-    
+
+    # 2. Remove ALL zero-width and invisible chars Telegram injects
+    text = re.sub(r'[\u200B\u200C\u200D\u2060\uFEFF\u180E]', '', text)
+
     # 3. Flatten newlines
     text = text.replace("\n", " ").replace("\r", " ")
-    text = re.sub(r'\s+', ' ', text).strip()
 
-    print("DEBUG RAW TEXT:", repr(text))
+    # 4. Remove double spaces
+    text = re.sub(r'\s+', ' ', text).strip().lower()
 
-    # ---- CARD ----
-    card = re.search(r'\b\d{16}\b', text)
+    print("DEBUG CLEAN TEXT:", repr(text))
+
+    # -------------------------
+    # CARD NUMBER 16–19 digits
+    # -------------------------
+    card = re.search(r'\b\d{16,19}\b', text)
     if not card:
         raise ValueError("Card not found")
     cc = card.group(0)
 
-    # ---- EXPIRY MM/YY ----
-    expiry = re.search(r'\b(0?[1-9]|1[0-2])[/\-](\d{2})\b', text)
+    # -------------------------
+    # EXPIRY MM/YY
+    # Accept:
+    #    06/29
+    #    6/29
+    #    06 / 29
+    #    06 /29   (with hidden unicode)
+    # -------------------------
+    expiry = re.search(
+        r'(0?[1-9]|1[0-2])\s*[/]\s*(\d{2})',
+        text
+    )
+
     if not expiry:
         raise ValueError("Expiry not found")
+
     mm = expiry.group(1).zfill(2)
     yy = expiry.group(2)
 
-    # ---- CVV ----
+    # -------------------------
+    # CVV (3 digits)
+    # First 3-digit NOT inside card number
+    # -------------------------
     cvv = None
-    for c in re.findall(r'\b\d{3}\b', text):
-        if c not in cc:
-            cvv = c
+    for m in re.findall(r'\b\d{3}\b', text):
+        if m not in cc:
+            cvv = m
             break
 
     if not cvv:
         raise ValueError("CVV not found")
 
     return cc, mm, yy, cvv
-
 
 
 
