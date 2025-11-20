@@ -98,7 +98,9 @@ def extract_card_data(raw: str):
     expiry = None
     # try explicit forms with separator
     # include pipe '|' as a valid separator as well
-    expiry_match = re.search(r'(?:exp(?:iry|iration)?[:\s]*)?(0?[1-9]|1[0-2])\s*(?:/|-|\.|\u2044|\||\s)\s*(\d{2,4})', lowered)
+    # prefer explicit symbol separators (/, |, -, .). Do NOT treat plain whitespace as a separator
+    # because that causes false matches inside spaced card numbers.
+    expiry_match = re.search(r'(?:exp(?:iry|iration)?[:\s]*)?(0?[1-9]|1[0-2])\s*(?:/|-|\.|\u2044|\|)\s*(\d{2,4})', lowered)
     if expiry_match:
         mm = expiry_match.group(1).zfill(2)
         yy = expiry_match.group(2)
@@ -106,13 +108,21 @@ def extract_card_data(raw: str):
         if len(yy) == 4:
             yy = yy[-2:]
     else:
-        # try compact MMYY like 0629 or MYY
-        m2 = re.search(r'\b(0[1-9]|1[0-2])([0-9]{2})\b', lowered)
-        if m2:
-            mm = m2.group(1).zfill(2)
-            yy = m2.group(2)
+        # extra explicit check for common separators in the original text (preserve original spacing)
+        sep_match = re.search(r'(0?[1-9]|1[0-2])\s*(?:/|\|)\s*(\d{2,4})', text)
+        if sep_match:
+            mm = sep_match.group(1).zfill(2)
+            yy = sep_match.group(2)
+            if len(yy) == 4:
+                yy = yy[-2:]
         else:
-            raise ValueError('Expiry not found')
+            # try compact MMYY like 0629 or MYY (contiguous digits)
+            m2 = re.search(r'\b(0[1-9]|1[0-2])([0-9]{2})\b', lowered)
+            if m2:
+                mm = m2.group(1).zfill(2)
+                yy = m2.group(2)
+            else:
+                raise ValueError('Expiry not found')
 
     # -------------------------
     # CVV: prefer labeled forms (cvv/cvc/security code). If not found, pick a 3-4 digit
@@ -292,6 +302,71 @@ def parse_card_input(raw: str) -> str:
     yy = yy.zfill(2)
 
     return f"{cc}|{mm}|{yy}|{cvv}"
+
+
+def extract_cc_mm_yyyy(raw: str) -> Tuple[str, str, str]:
+    """
+    Extract card number, month (MM) and year (YYYY) from messy/free-form input.
+
+    Returns (cc, mm, yyyy) where yyyy is 4-digit year. Raises ValueError if card or
+    expiry cannot be found.
+    """
+    # reuse normalization logic
+    s = unicodedata.normalize("NFKC", raw or "")
+    s = re.sub(r'[\u200B\u200C\u200D\u2060\uFEFF\u180E]', '', s)
+    s = s.replace("\n", " ").replace("\r", " ")
+    s = re.sub(r'\s+', ' ', s).strip()
+    lowered = s.lower()
+
+    # CARD: accept digits possibly separated by spaces, dashes, dots, mid-dots, bullets, non-breaking spaces
+    card_pat = re.search(r'(?:\d[ \-\.\u00B7\u2022\u00A0]*){13,19}', s)
+    card_number = None
+    if card_pat:
+        card_number = re.sub(r'\D', '', card_pat.group(0))
+    else:
+        # fallback contiguous digits
+        m = re.search(r'\b\d{13,19}\b', s)
+        if m:
+            card_number = m.group(0)
+
+    if not card_number:
+        raise ValueError('Card not found')
+
+    cc = card_number
+
+    # EXPIRY: 3-step approach
+    # 1) labeled expiry (allows whitespace as separator)
+    labeled = re.search(r'(?:exp(?:iry|ired)?)[^\d]{0,12}(0?[1-9]|1[0-2])\s*(?:/|\||-|\.|\s)\s*(\d{2,4})', lowered)
+    if labeled:
+        mm = labeled.group(1).zfill(2)
+        yy = labeled.group(2)
+    else:
+        # 2) explicit separator (/,|,-,.) without relying on whitespace
+        explicit = re.search(r'(0?[1-9]|1[0-2])\s*(?:/|\||-|\.)\s*(\d{2,4})', s)
+        if explicit:
+            mm = explicit.group(1).zfill(2)
+            yy = explicit.group(2)
+        else:
+            # 3) compact MMYY contiguous
+            compact = re.search(r'\b(0[1-9]|1[0-2])([0-9]{2})\b', lowered)
+            if compact:
+                mm = compact.group(1).zfill(2)
+                yy = compact.group(2)
+            else:
+                raise ValueError('Expiry not found')
+
+    # normalize year to 4-digit
+    if len(yy) == 2:
+        # naive pivot: 00-79 -> 2000-2079, 80-99 -> 1980-1999 (adjustable)
+        y = int(yy)
+        if 0 <= y <= 79:
+            yyyy = f"20{yy}"
+        else:
+            yyyy = f"19{yy}"
+    else:
+        yyyy = yy
+
+    return cc, mm.zfill(2), yyyy
 
 
 
