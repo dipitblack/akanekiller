@@ -1,5 +1,6 @@
 import requests
 import re
+import unicodedata
 import random
 import time
 import string
@@ -69,37 +70,95 @@ def get_fresh_cookies(proxy: dict) -> dict:
         logger.error(f"Failed to fetch cookies: {str(e)}")
         return {}
 
-# ------------------ NEW: Flexible card input parser ------------------
+# ------------------ NEW: clean_text + updated parser ------------------
+def clean_text(raw: str) -> str:
+    # Normalize unicode
+    text = unicodedata.normalize("NFKC", raw)
+
+    # Remove hidden zero-width characters
+    text = re.sub(r'[\u200B\u200C\u200D\u2060\uFEFF\u180E]', '', text)
+
+    # Replace NBSP with normal space
+    text = text.replace('\u00A0', ' ')
+
+    # Remove ellipsis
+    text = text.replace('\u2026', '')
+
+    # Remove CR and LF explicitly and collapse to spaces
+    text = text.replace('\r', ' ').replace('\n', ' ')
+    text = re.sub(r'\s+', ' ', text).strip()
+
+    return text
+
 def parse_card_input(raw: str) -> str:
-    import re
-    
-    text = ultra_clean(raw).lower()
+    """
+    Clean input and extract card number (16-19 digits), expiry MM/YY, and a 3-digit CVV.
+    Returns normalized string: cc|mm|yy|cvv
+    Raises ValueError if parsing fails.
+    """
+    text = clean_text(raw).lower()
 
-    # CARD 16–19 digits
-    cc_match = re.search(r'(?<!\d)\d{16,19}(?!\d)', text)
-    if not cc_match:
-        raise ValueError("Card number not found")
-    cc = cc_match.group(0)
+    # CARD: 16–19 digits (prefer contiguous sequence)
+    card_match = re.search(r'\b\d{16,19}\b', text)
+    if not card_match:
+        # try to join spaced groups of digits to form a long number (e.g., "4111 1111 1111 1111")
+        all_digits = ''.join(re.findall(r'\d+', text))
+        joined_match = re.search(r'(\d{16,19})', all_digits)
+        if joined_match:
+            cc = joined_match.group(1)
+        else:
+            raise ValueError("Card not found")
+    else:
+        cc = card_match.group(0)
 
-    # EXPIRY MM/YY
-    expiry = re.search(r'(0?[1-9]|1[0-2])\s*/\s*(\d{2})', text)
+    # EXPIRY: MM/YY (allow 1 or 2 digit month, require 2-digit year)
+    expiry = re.search(r'\b(0?[1-9]|1[0-2])\s*[\/\-]\s*(\d{2})\b', text)
     if not expiry:
-        raise ValueError("Expiry not found")
-    mm = expiry.group(1).zfill(2)
-    yy = expiry.group(2)
+        # fallback: look for tokens like "mm yy" or "mm yyyy"
+        tokens = re.findall(r'\d{1,4}', text)
+        # remove card digits tokens that could collide
+        tokens = [t for t in tokens if t not in [cc, cc[:4], cc[-4:]]]
+        found = False
+        for i in range(len(tokens)-1):
+            a, b = tokens[i], tokens[i+1]
+            if 1 <= int(a) <= 12 and len(b) == 2:
+                mm = str(int(a)).zfill(2)
+                yy = b
+                found = True
+                break
+        if not found:
+            raise ValueError("Expiry not found")
+    else:
+        mm = expiry.group(1).zfill(2)
+        yy = expiry.group(2)
 
-    # CVV 3 digits (NOT inside card)
+    # CVV: prefer labeled patterns, else first 3-digit group not part of card/expiry
     cvv = None
-    for m in re.findall(r'\b\d{3}\b', text):
-        if m not in cc:
-            cvv = m
-            break
+    cvv_label = re.search(r'(?:cvv|cvc|cvn|security code|cvv code|cvc code)[^\d]{0,6}(\d{3,4})', text, flags=re.I)
+    if cvv_label:
+        cvv = cvv_label.group(1)
+    else:
+        # find 3 or 4 digit groups
+        candidates = re.findall(r'\b\d{3,4}\b', text)
+        blacklist = {cc, mm.lstrip('0'), str(int(yy)) if yy.isdigit() else yy}
+        for c in candidates:
+            # skip if the candidate is part of the card number string
+            if c in cc:
+                continue
+            if c.lstrip('0') in blacklist or c in blacklist:
+                continue
+            # prefer 3-digit CVV
+            if len(c) == 3:
+                cvv = c
+                break
+            # accept 4-digit only if no 3-digit present
+            if len(c) == 4 and cvv is None:
+                cvv = c
+
     if not cvv:
         raise ValueError("CVV not found")
 
     return f"{cc}|{mm}|{yy}|{cvv}"
-
-
 # ------------------ End parser ------------------
 
 def process_cvv(card_info: str, cvv: str, proxy: dict) -> str:
@@ -214,4 +273,3 @@ async def ded(client: TelegramClient, event: events.NewMessage.Event, card_info:
     result_message += f"\n⏱ 𝐓𝐢𝐦𝐞 𝐓𝐚𝐤𝐞𝐧: {total_time:.2f} 𝘴𝘦𝘤𝘰𝘯𝘥𝘴\n"
 
     await processing_msg.edit(result_message)
-
