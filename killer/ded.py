@@ -50,38 +50,49 @@ def generate_random_email() -> str:
 # ----------------------------------------------------------------------
 def parse_card_input(raw: str) -> str:
     """
-    Parses card from ANY format:
-    - 4701320081651941 Expired : 06/29 Cvv : 091
-    - multiline
-    - mixed labels
+    SAFE text parser. Extracts card-like patterns in ANY format.
     Returns: cc|mm|yy|cvv
     """
-    text = raw.lower().replace("\n", " ").replace("\r", " ")
+
+    # Normalize formatting
+    text = raw.lower()
+    text = text.replace("\n", " ").replace("\r", " ")
     text = re.sub(r'\s+', ' ', text)
 
-    # 1) Card number
+    # ---------------------------
+    # 1) CARD NUMBER (13–19 digits)
+    # ---------------------------
     card = re.search(r'\b\d{13,19}\b', text)
     if not card:
         raise ValueError("Card number not found")
     cc = card.group(0)
 
-    # 2) Expiry
-     expiry = re.search(r'(0[1-9]|1[0-2])\s*[/\-]\s*(\d{2}(?:\d{2})?)', text)
+    # ---------------------------
+    # 2) EXPIRY (robust regex)
+    # ---------------------------
+    expiry = re.search(
+        r'(?i)\b(0?[1-9]|1[0-2])\s*[/\-]\s*(\d{2}|\d{4})\b',
+        text
+    )
+
     if not expiry:
         raise ValueError("Expiry month/year not parsed")
 
-    mm = expiry.group(1)
-    yy = expiry.group(2)[-2:]  # convert YYYY → YY
+    mm = expiry.group(1).zfill(2)    # "6" → "06"
+    yy = expiry.group(2)[-2:]        # 2029 → 29
 
-    # 3) CVV
+    # ---------------------------
+    # 3) CVV (3–4 digits)
+    # ---------------------------
     cvv = None
 
     labeled = re.search(r'(cvv|cvc|cvn)[^\d]{0,10}(\d{3,4})', text)
     if labeled:
         cvv = labeled.group(2)
     else:
+        # fallback: any 3/4-digit number not part of card or expiry
         for digits in re.findall(r'\b\d{3,4}\b', text):
-            if digits != yy and digits != mm and digits not in cc:
+            if digits not in cc and digits not in [mm, yy]:
                 cvv = digits
                 break
 
@@ -89,6 +100,7 @@ def parse_card_input(raw: str) -> str:
         raise ValueError("CVV not parsed")
 
     return f"{cc}|{mm}|{yy}|{cvv}"
+
 
 # ----------------------------------------------------------------------
 # ★ FIXED: Return cookies properly
@@ -203,5 +215,6 @@ async def ded(client: TelegramClient, event: events.NewMessage.Event, card_info:
     msg += f"\n⏱ Time Taken: {total_time:.2f}s"
 
     await processing_msg.edit(msg)
+
 
 
